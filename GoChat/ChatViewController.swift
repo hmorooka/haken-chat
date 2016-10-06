@@ -24,20 +24,19 @@ class ChatViewController: JSQMessagesViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         //この部分の設定が？。ゆくゆくはログイン情報と紐付けて表示すると思われる。
-        self.senderId = "1"
-        self.senderDisplayName = "h.morooka"
-
-        // Do any additional setup after loading the view.
         
-        //この下の２つのメッセージが保存される→消す→snapshotに過去のデータが保存？→dictionary型で表示
-        //messageRef.childByAutoId().setValue("first message")
-        //messageRef.childByAutoId().setValue("second message")
-//        messageRef.observeEventType(FIRDataEventType.Value) { (snapshot: FIRDataSnapshot) in
-//            print("test")
-//            if let dict = snapshot.value as? NSDictionary {
-//                print(dict)
-//            }
-//        }
+        if let currentUser = FIRAuth.auth()?.currentUser{
+            self.senderId = currentUser.uid
+            
+        if currentUser.anonymous == true{
+            
+            self.senderDisplayName = "anonymous"
+        } else {
+            self.senderDisplayName = "\(currentUser.displayName!)"
+        }
+        self.senderId = currentUser.uid
+        }
+        
         observeMessages()
     }
     
@@ -46,11 +45,67 @@ class ChatViewController: JSQMessagesViewController {
         messageRef.observeEventType(.ChildAdded, withBlock:  { snapshot in
 //            print(snapshot.value)
             if let dict = snapshot.value as? [String: AnyObject] {
-                let MediaType = dict["MediaType"] as! String
+                let mediaType = dict["MediaType"] as! String
                 let senderId = dict["senderId"] as! String
                 let senderName = dict["senderName"] as! String
-                let text = dict["text"] as! String
-                self.messages.append(JSQMessage(senderId: senderId, displayName: senderName, text: text))
+                
+                //switch文で条件分岐。mediaTypeで判別して処理を分ける。ここで分けておかないとエラー。
+                switch mediaType {
+                    
+                    case "TEXT":
+                        let text = dict["text"] as! String
+                        self.messages.append(JSQMessage(senderId: senderId, displayName: senderName, text: text))
+                    
+                    case "PHOTO":
+                        let fileUrl = dict["fileUrl"] as! String
+                        let url = NSURL(string: fileUrl)
+                        let data = NSData(contentsOfURL: url!)
+                        let picture = UIImage(data: data!)
+                        let photo = JSQPhotoMediaItem(image: picture)
+                        self.messages.append(JSQMessage(senderId: senderId, displayName: senderName, media: photo))
+                    
+                        if self.senderId == senderId {
+                            photo.appliesMediaViewMaskAsOutgoing = true
+                        } else {
+                            photo.appliesMediaViewMaskAsOutgoing = false
+                        }
+                    
+                    case "VIDEO":
+                        let fileUrl = dict["fileUrl"] as! String
+                        let video = NSURL(string: fileUrl)
+                        let videoItem = JSQVideoMediaItem(fileURL: video, isReadyToPlay: true)
+                        self.messages.append(JSQMessage(senderId: senderId, displayName: senderName, media: videoItem))
+                    
+                        if self.senderId == senderId {
+                            videoItem.appliesMediaViewMaskAsOutgoing = true
+                        } else {
+                            videoItem.appliesMediaViewMaskAsOutgoing = false
+                        }
+                    
+                default:
+                    print("unkwon data type")
+                }
+                
+                //firebaseのデータベースに入れるmediaTypeの区分けで処理を変えている。これで以前までの内容に触れる事ができる。これはif文で書いた場合
+//                if mediaType == "TEXT" {
+//                    let text = dict["text"] as! String
+//                    self.messages.append(JSQMessage(senderId: senderId, displayName: senderName, text: text))
+//                    
+//                }else if mediaType == "PHOTO"{
+//                    let fileUrl = dict["fileUrl"] as! String
+//                    let url = NSURL(string: fileUrl)
+//                    let data = NSData(contentsOfURL: url!)
+//                    let picture = UIImage(data: data!)
+//                    let photo = JSQPhotoMediaItem(image: picture)
+//                    self.messages.append(JSQMessage(senderId: senderId, displayName: senderName, media: photo))
+//                
+//                }else if mediaType == "VIDEO"{
+//                    let fileUrl = dict["fileUrl"] as! String
+//                    let video = NSURL(string: fileUrl)
+//                    let videoItem = JSQVideoMediaItem(fileURL: video, isReadyToPlay: true)
+//                    self.messages.append(JSQMessage(senderId: senderId, displayName: senderName, media: videoItem))
+//                }
+                
                 self.collectionView.reloadData()
             }
         })
@@ -70,6 +125,9 @@ class ChatViewController: JSQMessagesViewController {
         let newMessage = messageRef.childByAutoId()
         let messageData = ["text": text, "senderId": senderId, "senderName": senderDisplayName, "MediaType": "TEXT"]
         newMessage.setValue(messageData)
+        
+        //メッセージを送り終わったらキーボードを畳む
+        self.finishSendingMessage()
     }
     
     //添付ボタンを押したことが確認できる。添付ボタンを押したときのアラート表示。
@@ -116,8 +174,15 @@ class ChatViewController: JSQMessagesViewController {
     
     //吹き出しの設定
     override func collectionView(collectionView: JSQMessagesCollectionView!, messageBubbleImageDataForItemAtIndexPath indexPath: NSIndexPath!) -> JSQMessageBubbleImageDataSource! {
+        let message = messages[indexPath.item]
         let bubbleFactory = JSQMessagesBubbleImageFactory()
-        return bubbleFactory.outgoingMessagesBubbleImageWithColor(.blackColor())
+        
+        if message.senderId == self.senderId {
+            return bubbleFactory.outgoingMessagesBubbleImageWithColor(.blackColor())
+        } else {
+            return bubbleFactory.outgoingMessagesBubbleImageWithColor(.blueColor())
+        }
+
     }
     
     //アバターの設定
@@ -161,6 +226,15 @@ class ChatViewController: JSQMessagesViewController {
    
     @IBAction func logoutDidTapped(sender: AnyObject) {
         
+        do {
+            try FIRAuth.auth()?.signOut()
+        } catch let error{
+            print(error)
+        }
+        
+        //上のsignOut()がうまく行けば nilが表示される
+        print(FIRAuth.auth()?.currentUser)
+        
         //Create a main storybord instance
         let storyboard = UIStoryboard(name: "Main", bundle: nil)
         
@@ -185,15 +259,39 @@ class ChatViewController: JSQMessagesViewController {
     }
     */
     
-    //写真をストレージに保存する処理
+    //写真をストレージに保存する処理,ビデオをストレージに入れる処理
     func sendMedia(picture: UIImage?, video: NSURL?) {
         print(picture)
         print(FIRStorage.storage().reference())
+        
+        if let picture = picture {
+            let filePath = "\(FIRAuth.auth()!.currentUser!.uid)/\(NSDate.timeIntervalSinceReferenceDate())"
+            print(filePath)
+            let data = UIImageJPEGRepresentation(picture, 0.1)
+            let metadata = FIRStorageMetadata()
+            metadata.contentType = "image/jpg"
+            FIRStorage.storage().reference().child(filePath).putData(data!, metadata: metadata) { (metadata,error) in
+                if error != nil {
+                    print(error?.localizedDescription)
+                    return
+                }
+                //metadataの中身はnameにuidが入ってたりする。
+                print(metadata)
+                
+                let fileUrl = metadata!.downloadURLs![0].absoluteString
+                
+                let newMessage = self.messageRef.childByAutoId()
+                let messageData = ["fileUrl": fileUrl, "senderId": self.senderId, "senderName": self.senderDisplayName, "MediaType": "PHOTO"]
+                newMessage.setValue(messageData)
+
+        }
+            
+    }else if let video = video {
         let filePath = "\(FIRAuth.auth()!.currentUser!.uid)/\(NSDate.timeIntervalSinceReferenceDate())"
         print(filePath)
-        let data = UIImageJPEGRepresentation(picture!, 0.1)
+        let data = NSData(contentsOfURL: video)
         let metadata = FIRStorageMetadata()
-        metadata.contentType = "image/jpg"
+        metadata.contentType = "video/mp4"
         FIRStorage.storage().reference().child(filePath).putData(data!, metadata: metadata) { (metadata,error) in
             if error != nil {
                 print(error?.localizedDescription)
@@ -205,12 +303,14 @@ class ChatViewController: JSQMessagesViewController {
             let fileUrl = metadata!.downloadURLs![0].absoluteString
             
             let newMessage = self.messageRef.childByAutoId()
-            let messageData = ["fileUrl": fileUrl, "senderId": self.senderId, "senderName": self.senderDisplayName, "MediaType": "PHOTO"]
+            let messageData = ["fileUrl": fileUrl, "senderId": self.senderId, "senderName": self.senderDisplayName, "MediaType": "VIDEO"]
             newMessage.setValue(messageData)
             }
+        }
     }
-
 }
+
+
 
 //写真を追加、チャット上に表示する処理（inofの中にデータが入る「〜〜〜.jpg」とか）同様にビデオも。
 extension ChatViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate{
@@ -219,15 +319,12 @@ extension ChatViewController: UIImagePickerControllerDelegate, UINavigationContr
         //Get the image
         print(info)
         if let picture = info[UIImagePickerControllerOriginalImage] as? UIImage{
-        let photo = JSQPhotoMediaItem(image: picture)
-        messages.append(JSQMessage(senderId: senderId, displayName: senderDisplayName, media: photo))
-            
-            //写真をストレージに送ってる
+            //写真をdatabaseに送ってる
             sendMedia(picture, video: nil)
         }
         else if let video = info[UIImagePickerControllerMediaURL] as? NSURL {
-            let videoItem = JSQVideoMediaItem(fileURL: video, isReadyToPlay: true)
-            messages.append(JSQMessage(senderId: senderId, displayName: senderDisplayName, media: videoItem))
+            //ビデオをdatabaseに送っている
+            sendMedia(nil, video: video)
         }
         //写真を選択するとチャット画面に行く
         self.dismissViewControllerAnimated(true, completion: nil)

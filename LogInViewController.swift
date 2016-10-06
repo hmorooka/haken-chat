@@ -30,6 +30,22 @@ class LogInViewController: UIViewController, GIDSignInUIDelegate, GIDSignInDeleg
         GIDSignIn.sharedInstance().uiDelegate = self
         GIDSignIn.sharedInstance().delegate = self
     }
+    
+    //viewdidappearはこの画面になるたび呼び出される
+    override func viewDidAppear(animated: Bool) {
+        super.viewDidAppear(animated)
+        print(FIRAuth.auth()?.currentUser)
+        
+        //認証されているかどうかを確認して遷移先を選んでいる。ログイン認証されたままなら直接チャット画面に行く。
+        FIRAuth.auth()?.addAuthStateDidChangeListener({ (auth: FIRAuth, user: FIRUser?) in
+            if user != nil {
+                print(user)
+                Helper.helper.switchToNavigationViewController()
+            }else{
+                print("Unauthorized")
+            }
+        })
+    }
 
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()

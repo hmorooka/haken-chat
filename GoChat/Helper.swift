@@ -10,6 +10,7 @@ import Foundation
 import FirebaseAuth
 import UIKit
 import GoogleSignIn
+import FirebaseDatabase
 
 class Helper {
     static let helper = Helper()
@@ -22,6 +23,9 @@ class Helper {
         FIRAuth.auth()?.signInAnonymouslyWithCompletion({ (anonymousUser: FIRUser?, error: NSError?) in
             if error == nil{
                 print("UserId: \(anonymousUser!.uid)")
+                
+                let newUser = FIRDatabase.database().reference().child("users").child(anonymousUser!.uid)
+                newUser.setValue(["displayname": "anonymous", "id": "\(anonymousUser!.uid)", "profileUrl": ""])
                 
                 self.switchToNavigationViewController()
                 
@@ -46,15 +50,19 @@ class Helper {
             }else {
                 print(user?.email)
                 print(user?.displayName)
+                print(user?.photoURL)
+                
+                //ユーザーデータをfiredatabaseに保存する
+                let newUser = FIRDatabase.database().reference().child("users").child(user!.uid)
+                newUser.setValue(["displayname": "\(user!.displayName!)", "id": "\(user!.uid)", "profileUrl": "\(user!.photoURL!)"])
                 
                 self.switchToNavigationViewController()
-                
             }
         })
         
     }
     //画面遷移のためのメソッド
-    private func switchToNavigationViewController() {
+    func switchToNavigationViewController() {
         let storyboard = UIStoryboard(name: "Main", bundle: nil)
         let naviVC = storyboard.instantiateViewControllerWithIdentifier("NavigationVC") as! UINavigationController
         let appDelegate = UIApplication.sharedApplication().delegate as! AppDelegate
