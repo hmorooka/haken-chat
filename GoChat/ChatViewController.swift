@@ -18,7 +18,11 @@ import FirebaseStorage
 //JSQMessagesViewControllerを設定している:~の意味は？
 class ChatViewController: JSQMessagesViewController {
     
+    //配列の初期化する
     var messages = [JSQMessage]()
+    var avatarDict = [String: JSQMessagesAvatarImage]()
+    
+    //databaseのreferenceの設定？
     var messageRef = FIRDatabase.database().reference().child("messages")
 
     override func viewDidLoad() {
@@ -34,10 +38,38 @@ class ChatViewController: JSQMessagesViewController {
         } else {
             self.senderDisplayName = "\(currentUser.displayName!)"
         }
-        self.senderId = currentUser.uid
         }
-        
+        //observeUsersはobserveMessagesの中で使われている
         observeMessages()
+    }
+    
+    //以前の投稿データのユーザーを表示するメソッド
+    func observeUsers(id: String){
+        
+        FIRDatabase.database().reference().child("users").child(id).observeEventType(.Value, withBlock: {
+            snapshot in
+            if let dict = snapshot.value as? [String: AnyObject]{
+                
+                //dictの中にあるavatarを下で定義したsetupAvatarで実行する
+                let avatarUrl = dict["profileUrl"] as! String
+                self.setupAvatar(avatarUrl, messageId: id)
+            }
+        })
+    }
+    
+    //下で設定したavatarを使っている→？？？
+    func setupAvatar(url: String, messageId: String){
+        
+        if url != ""{
+            let fileUrl = NSURL(string: url)
+            let data = NSData(contentsOfURL: fileUrl!)
+            let image = UIImage(data: data!)
+            let userImg = JSQMessagesAvatarImageFactory.avatarImageWithImage(image, diameter: 30)
+            avatarDict[messageId] = userImg
+        } else {
+            avatarDict[messageId] = JSQMessagesAvatarImageFactory.avatarImageWithImage(UIImage(named: "profileImage"), diameter: 30)
+        }
+        collectionView.reloadData()
     }
     
     //以前に入力されていたデータ（snapshot?）の値をdictに代入する→dictに入っている配列の中のキーから中身をそれぞれの定数に代入→それをメッセージ表示の時にappendで表示させる
@@ -48,6 +80,9 @@ class ChatViewController: JSQMessagesViewController {
                 let mediaType = dict["MediaType"] as! String
                 let senderId = dict["senderId"] as! String
                 let senderName = dict["senderName"] as! String
+                
+                //senderIdを引数にしてユーザーを特定している
+                self.observeUsers(senderId)
                 
                 //switch文で条件分岐。mediaTypeで判別して処理を分ける。ここで分けておかないとエラー。
                 switch mediaType {
@@ -178,16 +213,20 @@ class ChatViewController: JSQMessagesViewController {
         let bubbleFactory = JSQMessagesBubbleImageFactory()
         
         if message.senderId == self.senderId {
-            return bubbleFactory.outgoingMessagesBubbleImageWithColor(.blackColor())
+            return bubbleFactory.outgoingMessagesBubbleImageWithColor(UIColor.jsq_messageBubbleLightGrayColor())
         } else {
-            return bubbleFactory.outgoingMessagesBubbleImageWithColor(.blueColor())
+            return bubbleFactory.incomingMessagesBubbleImageWithColor(UIColor.jsq_messageBubbleGreenColor())
         }
 
     }
     
-    //アバターの設定
+    //アバターの設定 アバターを取って来る部分
     override func collectionView(collectionView: JSQMessagesCollectionView!, avatarImageDataForItemAtIndexPath indexPath: NSIndexPath!) -> JSQMessageAvatarImageDataSource! {
-        return nil
+        
+        let message = messages[indexPath.item]
+        
+        return avatarDict[message.senderId]
+//        return JSQMessagesAvatarImageFactory.avatarImageWithImage(UIImage(named: "profileImage"), diameter: 30)
     }
     
     //アイテムの総数を返す
