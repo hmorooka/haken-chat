@@ -13,6 +13,7 @@ import AVKit
 import FirebaseDatabase
 import FirebaseAuth
 import FirebaseStorage
+import SDWebImage
 
 
 //JSQMessagesViewControllerを設定している:~の意味は？
@@ -24,6 +25,7 @@ class ChatViewController: JSQMessagesViewController {
     
     //databaseのreferenceの設定？
     var messageRef = FIRDatabase.database().reference().child("messages")
+//    let photoCache = NSCache()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -84,20 +86,54 @@ class ChatViewController: JSQMessagesViewController {
                 //senderIdを引数にしてユーザーを特定している
                 self.observeUsers(senderId)
                 
+//                let startTime = CFAbsoluteTimeGetCurrent()
+                
                 //switch文で条件分岐。mediaTypeで判別して処理を分ける。ここで分けておかないとエラー。
+                
                 switch mediaType {
                     
                     case "TEXT":
                         let text = dict["text"] as! String
                         self.messages.append(JSQMessage(senderId: senderId, displayName: senderName, text: text))
                     
+                    //NSDataに変換する部分が重いのでUIをおかしくしている→改善→dispatch_acyncとサードパーティライブラリーを使う
                     case "PHOTO":
+//                        let fileUrl = dict["fileUrl"] as! String
+//                        
+//                        //既にキャッシュが存在して過去ダウンロードしていれば。。。。みたいな箇所
+//                        if let cachedPhoto = self.photoCache.objectForKey(fileUrl) as? JSQPhotoMediaItem {
+//                            photo = cachedPhoto
+//                            self.collectionView.reloadData()
+//                            
+//                        } else {
+//                            dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INTERACTIVE, 0), {
+//                                let data = NSData(contentsOfURL: NSURL(string: fileUrl)!)
+//                                
+//                                dispatch_async(dispatch_get_main_queue(), {
+//                                    let image = UIImage(data: data!)
+//                                    photo.image = image
+//                                    self.collectionView.reloadData()
+//                                    self.photoCache.setObject(photo, forKey: fileUrl)
+//                        })
+//                        
+//                    
+//                            })
+//                        }
+                        
+                        let photo = JSQPhotoMediaItem(image: nil)
                         let fileUrl = dict["fileUrl"] as! String
-                        let url = NSURL(string: fileUrl)
-                        let data = NSData(contentsOfURL: url!)
-                        let picture = UIImage(data: data!)
-                        let photo = JSQPhotoMediaItem(image: picture)
+                        let downloader = SDWebImageDownloader.sharedDownloader()
+                        downloader.downloadImageWithURL(NSURL(string: fileUrl)!, options: [], progress: nil,
+                            completed: { (image, data, error, finished) in
+                                print(NSThread.currentThread())
+                                dispatch_async(dispatch_get_main_queue(), {
+                                    photo.image = image
+                                    self.collectionView.reloadData()
+                                })
+                            })
+                
                         self.messages.append(JSQMessage(senderId: senderId, displayName: senderName, media: photo))
+      
                     
                         if self.senderId == senderId {
                             photo.appliesMediaViewMaskAsOutgoing = true
